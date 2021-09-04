@@ -24,14 +24,14 @@ client.on('message', (message) => {
         if (message.member.permissions.has('MANAGE_ROLES'))
             _add(message)
         else
-            message.reply(`You don't have manage roles permission.`);
+            message.reply(`you don't have manage roles permission.`);
     }
 })
 
 function _help(message) {
     const channel = client.channels.cache.get(message.channel.id);
 
-    const exampleEmbed = new MessageEmbed()
+    const embed = new MessageEmbed()
         .setColor(process.env.EMBED_COLOR)
         .setTitle('List of available commands')
         .addFields(
@@ -43,7 +43,7 @@ function _help(message) {
         .setTimestamp()
         .setFooter('Zzzzz....');
 
-    channel.send(exampleEmbed);
+    channel.send(embed);
 }
 
 function _add(message) {
