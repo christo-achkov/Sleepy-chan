@@ -1,6 +1,7 @@
 {
     "name": "Sleepy-chan",
     "version": "1.0.0",
+    "type": "module",
     "description": "A simple discord role assignment bot",
     "main": "index.js",
     "scripts": {
@@ -21,6 +22,6 @@
     "homepage": "https://github.com/christo-achkov/Sleepy-chan",
     "dependencies": {
         "discord.js": "^12.5.3",
-        "dotenv": "^10.0.0"
+        "firebase": "^9.0.1"
     }
 }
