@@ -1,0 +1,26 @@
+{
+    "name": "Sleepy-chan",
+    "version": "1.0.0",
+    "description": "A simple discord role assignment bot",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "start": "node ./src/bot.js",
+        "dev": "nodemon ./src/bot.js"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/christo-achkov/Sleepy-chan.git"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "GPT3.0",
+    "bugs": {
+        "url": "https://github.com/christo-achkov/Sleepy-chan/issues"
+    },
+    "homepage": "https://github.com/christo-achkov/Sleepy-chan",
+    "dependencies": {
+        "discord.js": "^12.5.3",
+        "dotenv": "^10.0.0"
+    }
+}
