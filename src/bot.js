@@ -17,16 +17,70 @@ client.on('ready', () => {
 });
 
 client.on('message', (message) => {
-    if (message.content.startsWith(config["PREFIX"] + "help"))
+    if (message.content.startsWith(config["PREFIX"] + "help")) {
         _help(message);
-
-    if (message.content.startsWith(config["PREFIX"] + "add")) {
-        if (message.member.permissions.has('MANAGE_ROLES'))
-            _add(message)
-        else
-            message.reply(`you don't have manage roles permission.`);
     }
+
+    const isAdd = message.content.startsWith(config["PREFIX"] + "add");
+    const isRemove = message.content.startsWith(config["PREFIX"] + "remove");
+    const isPost = message.content.startsWith(config["PREFIX"] + "post");
+    const hasPermission = message?.member?.permissions?.has('MANAGE_ROLES');
+
+    if (isAdd && hasPermission)
+        _add(message)
+
+    if (isRemove && hasPermission)
+        _remove(message)
+
+    if (isPost && hasPermission)
+        _post(message)
+
+    if ((isAdd || isRemove || isPost) && !hasPermission)
+        message.reply(`you don't have manage roles permission.`);
 })
+
+client.on('messageReactionAdd', async (reaction, user) => {
+    _handleRole("ADD", reaction, user);
+})
+
+client.on('messageReactionRemove', async (reaction, user) => {
+    _handleRole("REMOVE", reaction, user);
+})
+
+async function _handleRole(type, reaction, user) {
+    if (reaction.message.author.username != config["BOT_NAME"] || user.username == config["BOT_NAME"]) return;
+
+    const docRef = doc(db, `${reaction.message.channel.guild.id}`, "assign-roles");
+    const docSnap = await getDoc(docRef)
+    const assignRoles = docSnap.data()['entries'];
+
+    const roleToAdd = assignRoles.find(entry => entry.emoji.includes(reaction.emoji.id) || entry.emoji.includes(reaction.emoji.name))
+
+    if (!roleToAdd || roleToAdd.length == 0) return;
+
+    let role = reaction.message.guild.roles.cache.get(roleToAdd.role);
+    const channel = client.channels.cache.get(reaction.message.channel.id);
+    const guildMember = reaction.message.guild.member(user);
+
+    if (type == "ADD") {
+        await guildMember.roles.add(role);
+
+        const message = await channel.send(`<@${user.id}>, assigned ${roleToAdd.emoji}.`);
+        setTimeout(() => {
+            message.delete();
+        }, 5000);
+    }
+
+    if (type == "REMOVE") {
+        await guildMember.roles.remove(role);
+
+        const message = await channel.send(`<@${user.id}>, removed ${roleToAdd.emoji}.`);
+
+        setTimeout(() => {
+            message.delete();
+        }, 5000);
+    }
+}
 
 function _help(message) {
     const channel = client.channels.cache.get(message.channel.id);
@@ -39,7 +93,7 @@ function _help(message) {
             { name: 'Remove assign role', value: '*remove <role>' },
             { name: 'Post role assign message', value: '*post' },
         )
-        .setImage('https://i.imgur.com/4rBSvs3.png')
+        .setImage(config["HELP_THUMBNAIL"])
         .setTimestamp()
         .setFooter('Zzzzz....');
 
@@ -72,9 +126,10 @@ async function _add(message) {
 
     const docRef = doc(db, `${message.channel.guild.id}`, "assign-roles");
     const docSnap = await getDoc(docRef);
+    const newRole = { "role": roleId, "emoji": emoji };
 
     if (!docSnap.exists()) {
-        const newData = { "entries": [{ "role": roleId, "emoji": emoji }] };
+        const newData = { "entries": [newRole] };
         await setDoc(docRef, newData);
     } else {
         const data = docSnap.data();
@@ -84,29 +139,101 @@ async function _add(message) {
         }
 
         await updateDoc(docRef, {
-            entries: arrayUnion({ "role": roleId, "emoji": emoji })
+            entries: arrayUnion(newRole)
         });
     }
 
     message.reply(`role <@&${roleId}> with react emote ${emoji} was added successfully!`)
-    _list(message);
+    _listChange(message, newRole, "NEW");
 }
 
-async function _list(message) {
+async function _remove(message) {
+    const regex = new RegExp("^\\*remove <@&(\\d+)>$", "gm");
+    const match = regex.exec(message.content);
+
+    if (!match) {
+        message.reply("invalid format. Try '*remove <role>'");
+        return;
+    }
+
+    const roleId = match[1];
+    const docRef = doc(db, `${message.channel.guild.id}`, "assign-roles");
+    const docSnap = await getDoc(docRef)
+
+    if (docSnap.exists() && docSnap.data()["entries"].some(entry => entry.role == roleId)) {
+        const entry = docSnap.data()["entries"].find(entry => entry.role == roleId);
+
+        await updateDoc(docRef, {
+            entries: arrayRemove(entry)
+        });
+
+        message.reply(`the role <@&${entry.role}> has been removed successfully.`)
+
+        _listChange(message, entry, "REMOVED", true);
+    } else {
+        message.reply(`the role <@&${roleId}> does not seem to have been added to assign roles.`)
+    }
+}
+
+async function _post(message) {
+    const channel = client.channels.cache.get(message.channel.id);
+
+    const docRef = doc(db, `${message.channel.guild.id}`, "assign-roles");
+    const docSnap = await getDoc(docRef)
+
+    if (!docSnap.exists() || docSnap.data()["entries"].length == 0) {
+        message.reply("there are no entries yet. Try adding some with the *add command.");
+        return;
+    }
+
+    const data = docSnap.data();
+
+    const fields = data["entries"].map(entry => ({
+        name: `${entry.emoji}`,
+        value: `<@&${entry.role}>`,
+        inline: true
+    }));
+
+    const embed = new MessageEmbed()
+        .setTitle("React to add/remove ping role~")
+        .setColor(config["EMBED_COLOR"])
+        .addFields(
+            fields
+        )
+        .setImage(config["POST_THUMBNAIL"])
+
+    const reactionMessage = await channel.send(embed);
+
+    data["entries"].forEach(entry => {
+        reactionMessage.react(`${entry.emoji}`);
+    });
+}
+
+async function _listChange(message, newRole, info, remove = false) {
     const channel = client.channels.cache.get(message.channel.id);
 
     const docRef = doc(db, `${message.channel.guild.id}`, "assign-roles");
     const docSnap = await getDoc(docRef)
     const data = docSnap.data();
 
-    const fields = data["entries"].map(entry => ({ name: `${entry.emoji}`, value: `<@&${entry.role}>`, inline: true }));
+    const fields = data["entries"].map(entry => ({
+        name: entry.role == newRole.role ? `${info} -> ${entry.emoji}` : `${entry.emoji}`,
+        value: `<@&${entry.role}>`,
+        inline: true
+    }));
+
+    if (remove) {
+        fields.push({ name: `${info} -> ${newRole.emoji}`, value: `<@&${newRole.role}>`, inline: true })
+    }
 
     const embed = new MessageEmbed()
         .setColor(config["EMBED_COLOR"])
-        .setTitle('Assigned roles')
         .addFields(
             fields
         )
+        .setImage(config["LIST_THUMBNAIL"])
+        .setTimestamp()
+        .setFooter('Yawn... Anything else?~');
 
     channel.send(embed);
 }
@@ -142,6 +269,7 @@ function _isUTFEmoji(input, includeBasic = true) {
         return false;
     }
 }
+
 
 
 
