@@ -6,14 +6,24 @@ import config from "../config.js";
 const FBApp = initializeApp(config["FIREBASE_CONFIG"]);
 const db = getFirestore();
 const client = new Client();
-
+// test
 client.login(config["DISCORDJS_BOT_TOKEN"]);
 
 client.on('ready', () => {
     console.log(`${client.user.username} has logged in successfully!`);
     console.log(`Currently set prefix is "${config["PREFIX"]}".`)
 
-    client.user.setActivity(`${config["PREFIX"]}help for commands`);
+    let alternator = 0;
+    setInterval(() => {
+
+        if (alternator === 0) {
+            client.user.setActivity(`${config["PREFIX"]}help for commands`);
+            alternator = 1;
+        } else {
+            client.user.setActivity(`${config["PREFIX"]}post for role assignment`);
+            alternator = 0;
+        }
+    }, 60000);
 });
 
 client.on('message', (message) => {
@@ -32,10 +42,10 @@ client.on('message', (message) => {
     if (isRemove && hasPermission)
         _remove(message)
 
-    if (isPost && hasPermission)
+    if (isPost)
         _post(message)
 
-    if ((isAdd || isRemove || isPost) && !hasPermission)
+    if ((isAdd || isRemove) && !hasPermission)
         message.reply(`you don't have manage roles permission.`);
 })
 
@@ -48,34 +58,62 @@ client.on('messageReactionRemove', async (reaction, user) => {
 })
 
 async function _handleRole(type, reaction, user) {
-    if (reaction.message.author.username != config["BOT_NAME"] || user.username == config["BOT_NAME"]) return;
+    try {
+        if (reaction.message.author.username != config["BOT_NAME"] || user.username == config["BOT_NAME"]) return;
 
-    const docRef = doc(db, `${reaction.message.channel.guild.id}`, "assign-roles");
-    const docSnap = await getDoc(docRef)
-    const assignRoles = docSnap.data()['entries'];
+        const docRef = doc(db, `${reaction.message.channel.guild.id}`, "assign-roles");
+        const docSnap = await getDoc(docRef)
+        const assignRoles = docSnap.data()['entries'];
 
-    const roleToAdd = assignRoles.find(entry => entry.emoji.includes(reaction.emoji.id) || entry.emoji.includes(reaction.emoji.name))
+        const roleToAdd = assignRoles.find(entry => entry.emoji.includes(reaction.emoji.id) || entry.emoji.includes(reaction.emoji.name))
 
-    if (!roleToAdd || roleToAdd.length == 0) return;
+        if (!roleToAdd || roleToAdd.length == 0) return;
 
-    let role = reaction.message.guild.roles.cache.get(roleToAdd.role);
-    const channel = client.channels.cache.get(reaction.message.channel.id);
-    const guildMember = reaction.message.guild.member(user);
+        let role = reaction.message.guild.roles.cache.get(roleToAdd.role);
+        const channel = client.channels.cache.get(reaction.message.channel.id);
+        const guildMember = reaction.message.guild.member(user);
 
-    if (type == "ADD") {
-        await guildMember.roles.add(role);
 
-        const message = await channel.send(`<@${user.id}>, assigned ${roleToAdd.emoji}.`);
-        setTimeout(() => {
-            message.delete();
-        }, 5000);
-    }
+        if (type == "ADD") {
+            let message;
 
-    if (type == "REMOVE") {
-        await guildMember.roles.remove(role);
+            const hasRole = guildMember.roles.cache.find(r => r.id === role.id);
 
-        const message = await channel.send(`<@${user.id}>, removed ${roleToAdd.emoji}.`);
+            if (hasRole) {
+                message = await channel.send(`<@${user.id}>, you already have role ${roleToAdd.emoji}. React again to remove.`).
+                    catch(err => { throw err; });
+            } else {
+                await guildMember.roles.add(role);
+                message = await channel.send(`<@${user.id}>, assigned ${roleToAdd.emoji}.`).
+                    catch(err => { throw err; });
+            }
 
+            setTimeout(() => {
+                message.delete();
+            }, 5000);
+        }
+
+        if (type == "REMOVE") {
+            let message;
+
+            const hasRole = guildMember.roles.cache.find(r => r.id === role.id);
+
+            if (!hasRole) {
+                message = await channel.send(`<@${user.id}>, you do not have role ${roleToAdd.emoji}. React again to get it.`).
+                    catch(err => { throw err; });
+            } else {
+                await guildMember.roles.remove(role);
+                message = await channel.send(`<@${user.id}>, removed ${roleToAdd.emoji}.`).
+                    catch(err => { throw err; });
+            }
+
+            setTimeout(() => {
+                message.delete();
+            }, 5000);
+        }
+    } catch (e) {
+        const channel = client.channels.cache.get(reaction.message.channel.id);
+        const message = await channel.send(`<@${user.id}>, something went wrong. Check permissions and try again.`);
         setTimeout(() => {
             message.delete();
         }, 5000);
@@ -269,8 +307,3 @@ function _isUTFEmoji(input, includeBasic = true) {
         return false;
     }
 }
-
-
-
-
-
